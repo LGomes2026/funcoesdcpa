@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Escala Operacional - V3</title>
+  <!-- Tailwind CSS para estilização -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React, ReactDOM e Babel para rodar no navegador -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const SENHA_MESTRE = "19161294";
+
+    // Componente Badge de Status
+    const StatusBadge = ({ status }) => {
+      const colors = {
+        'Ativa': 'bg-green-100 text-green-800 border-green-300',
+        'Em Manutenção': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+        'Fora de Ação': 'bg-red-100 text-red-800 border-red-300',
+      };
+      return (
+        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${colors[status] || 'bg-gray-100'}`}>
+          {status}
+        </span>
+      );
+    };
+
+    function GestaoEscalasApp() {
+      // Controle de Abas
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [modoEdicaoAtivo, setModoEdicaoAtivo] = useState(false);
+
+      // Filtros de Data e Turno
+      const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split('T')[0]);
+      const [turnoSelecionado, setTurnoSelecionado] = useState('Diurno');
+
+      // Estado inicial de Viaturas
+      const [viaturas, setViaturas] = useState(() => {
+        const saved = localStorage.getItem('app_viaturas_v3');
+        return saved ? JSON.parse(saved) : [
+          { id: 1, nome: 'VTR 01', placa: 'ABC-1234', modelo: 'Duster', status: 'Ativa' },
+          { id: 2, nome: 'VTR 02', placa: 'XYZ-5678', modelo: 'Hilux', status: 'Ativa' },
+          { id: 3, nome: 'VTR 03', placa: 'DEF-9012', modelo: 'S10', status: 'Em Manutenção' },
+          { id: 4, nome: 'VTR 04', placa: 'GHI-3456', modelo: 'L200', status: 'Fora de Ação' },
+        ];
+      });
+
+      // Estado inicial de Escalas
+      const [escalasGlobal, setEscalasGlobal] = useState(() => {
+        const saved = localStorage.getItem('app_escalas_v3');
+        return saved ? JSON.parse(saved) : {};
+      });
+
+      // Validar senha para ações protegidas
+      const solicitarSenhaAcesso = (acaoSucesso) => {
+        if (modoEdicaoAtivo) {
+          acaoSucesso();
+          return;
+        }
+        const inputSenha = prompt("🔒 Área Protegida. Digite a senha para editar:");
+        if (inputSenha === SENHA_MESTRE) {
+          setModoEdicaoAtivo(true);
+          acaoSucesso();
+        } else if (inputSenha !== null) {
+          alert("❌ Senha incorreta! Acesso negado.");
+        }
+      };
+
+      const alternarModoEdicao = () => {
+        if (modoEdicaoAtivo) {
+          setModoEdicaoAtivo(false);
+          alert("🔒 Modo de edição bloqueado.");
+        } else {
+          solicitarSenhaAcesso(() => {
+            alert("🔓 Modo de edição liberado com sucesso!");
+          });
+        }
+      };
+
+      const keyEscalaAtual = `${dataSelecionada}_${turnoSelecionado}`;
+
+      const escalaAtual = escalasGlobal[keyEscalaAtual] || {
+        data: dataSelecionada,
+        horaInicio: '07:00',
+        horaTermino: '19:00',
+        coordenacao: { supervisor: '', coordenador: '', assessor: '', apoioCoord: '' },
+        apoioServicos: { auxiliarServico: '', gestorViaturas: '', logistica: '' },
+        equipes: [
+          { id: 101, nome: 'Equipe 01', viaturaId: 1, condutor: 'Cb. Lima', operador1: 'Sd. Costa', operador2: 'Sd. Pereira', radio: 'HT-01', localDesignado: 'Setor Norte - Centro', observacoes: 'Patrulha preventiva' },
+          { id: 102, nome: 'Equipe 02', viaturaId: null, condutor: '', operador1: '', operador2: '', radio: '', localDesignado: '', observacoes: '' },
+          { id: 103, nome: 'Equipe 03', viaturaId: 2, condutor: 'Sgt. Mendes', operador1: 'Sd. Martins', operador2: 'Sd. Barbosa', radio: 'HT-02', localDesignado: 'Setor Sul', observacoes: 'Atenção redobrada' },
+        ]
+      };
+
+      const updateEscalaAtual = (novaEscala) => {
+        solicitarSenhaAcesso(() => {
+          setEscalasGlobal({
+            ...escalasGlobal,
+            [keyEscalaAtual]: novaEscala
+          });
+        });
+      };
+
+      const handleViaturaChange = (index, field, value) => {
+        solicitarSenhaAcesso(() => {
+          const updated = [...viaturas];
+          updated[index][field] = value;
+          setViaturas(updated);
+        });
+      };
+
+      const addViaturaRow = () => {
+        solicitarSenhaAcesso(() => {
+          setViaturas([
+            ...viaturas,
+            { id: Date.now(), nome: '', placa: '', modelo: '', status: 'Ativa' },
+          ]);
+        });
+      };
+
+      const removeViatura = (id) => {
+        solicitarSenhaAcesso(() => {
+          setViaturas(viaturas.filter((v) => v.id !== id));
+        });
+      };
+
+      const saveViaturas = () => {
+        solicitarSenhaAcesso(() => {
+          localStorage.setItem('app_viaturas_v3', JSON.stringify(viaturas));
+          alert('Todas as viaturas foram salvas com sucesso!');
+        });
+      };
+
+      const saveEscala = () => {
+        solicitarSenhaAcesso(() => {
+          localStorage.setItem('app_escalas_v3', JSON.stringify(escalasGlobal));
+          alert(`Escala do dia ${escalaAtual.data || dataSelecionada} (${turnoSelecionado}) salva com sucesso!`);
+        });
+      };
+
+      const addNovaEquipe = () => {
+        solicitarSenhaAcesso(() => {
+          const proximoNum = escalaAtual.equipes.length + 1;
+          const novaEq = {
+            id: Date.now(),
+            nome: `Equipe ${proximoNum < 10 ? '0' + proximoNum : proximoNum}`,
+            viaturaId: null,
+            condutor: '',
+            operador1: '',
+            operador2: '',
+            radio: '',
+            localDesignado: '',
+            observacoes: ''
+          };
+          updateEscalaAtual({
+            ...escalaAtual,
+            equipes: [...escalaAtual.equipes, novaEq]
+          });
+        });
+      };
+
+      const removeEquipe = (id) => {
+        solicitarSenhaAcesso(() => {
+          const updatedEquipes = escalaAtual.equipes.filter((eq) => eq.id !== id);
+          updateEscalaAtual({
+            ...escalaAtual,
+            equipes: updatedEquipes
+          });
+        });
+      };
+
+      // Filtrar apenas equipes que possuem Viatura atribuída
+      const equipesFiltradasDashboard = escalaAtual.equipes.filter(
+        (eq) => eq.viaturaId !== null && eq.viaturaId !== '' && eq.viaturaId !== 0 && eq.viaturaId !== '0'
+      );
+
+      // Verificação de existência de dados de gestão preenchidos
+      const temCoordPreenchida = Object.values(escalaAtual.coordenacao || {}).some(v => v && v.trim() !== '');
+      const temApoioPreenchido = Object.values(escalaAtual.apoioServicos || {}).some(v => v && v.trim() !== '');
+
+      return (
+        <div className="min-h-screen bg-gray-100">
+          {/* Cabeçalho */}
+          <header className="bg-blue-900 text-white shadow-md">
+            <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+              <h1 className="text-2xl font-bold tracking-wide flex items-center gap-2">
+                🛡️ Escala Operacional 2026
+              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <nav className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      activeTab === 'dashboard' ? 'bg-blue-700 text-white' : 'hover:bg-blue-800 text-blue-100'
+                    }`}
+                  >
+                    📊 Dashboard Turno
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('editar_escala')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      activeTab === 'editar_escala' ? 'bg-blue-700 text-white' : 'hover:bg-blue-800 text-blue-100'
+                    }`}
+                  >
+                    📝 Montar Escala
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('relatorio')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      activeTab === 'relatorio' ? 'bg-blue-700 text-white' : 'hover:bg-blue-800 text-blue-100'
+                    }`}
+                  >
+                    📈 Relatório Geral
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('viaturas')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      activeTab === 'viaturas' ? 'bg-blue-700 text-white' : 'hover:bg-blue-800 text-blue-100'
+                    }`}
+                  >
+                    🚘 Gestão de Viaturas
+                  </button>
+                </nav>
+
+                {/* Botão de Trava/Desbloqueio de Edição */}
+                <button
+                  onClick={alternarModoEdicao}
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                    modoEdicaoAtivo ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                  title={modoEdicaoAtivo ? "Clique para bloquear edição" : "Clique para liberar edição com senha"}
+                >
+                  {modoEdicaoAtivo ? '🔓 Edição Liberada' : '🔒 Protegido por Senha'}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 py-6">
+
+            {/* TAB 1: DASHBOARD DO TURNO */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                {/* Filtro de Data e Turno */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Data da Escala</label>
+                      <input
+                        type="date"
+                        value={dataSelecionada}
+                        onChange={(e) => setDataSelecionada(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Turno</label>
+                      <select
+                        value={turnoSelecionado}
+                        onChange={(e) => setTurnoSelecionado(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      >
+                        <option value="Diurno">☀️ Diurno</option>
+                        <option value="Noturno">🌙 Noturno</option>
+                      </select>
+                    </div>
+                    {(escalaAtual.horaInicio || escalaAtual.horaTermino) && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Horário do Turno</label>
+                        <span className="text-sm font-semibold text-blue-900 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 block">
+                          ⏰ {escalaAtual.horaInicio || '00:00'} às {escalaAtual.horaTermino || '00:00'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={saveEscala}
+                    className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold text-sm transition shadow"
+                  >
+                    💾 Salvar Escala
+                  </button>
+                </div>
+
+                {/* BLOCO 1: COORDENAÇÃO & APOIO OPERACIONAL */}
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                  <h2 className="text-lg font-bold text-gray-800 border-b pb-2">
+                    👨‍✈️ Gestão e Coordenação do Turno ({turnoSelecionado})
+                  </h2>
+
+                  {!temCoordPreenchida && !temApoioPreenchido ? (
+                    <p className="text-sm text-gray-400 italic">Nenhum membro da gestão escalado para este turno.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Seção Coordenação */}
+                      {temCoordPreenchida && (
+                        <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                          <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Coordenação</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {escalaAtual.coordenacao?.supervisor && (
+                              <div className="p-2.5 bg-white rounded-lg border border-blue-100 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-blue-600 uppercase block">Supervisor</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.coordenacao.supervisor}</p>
+                              </div>
+                            )}
+                            {escalaAtual.coordenacao?.coordenador && (
+                              <div className="p-2.5 bg-white rounded-lg border border-blue-100 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-blue-600 uppercase block">Coordenador</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.coordenacao.coordenador}</p>
+                              </div>
+                            )}
+                            {escalaAtual.coordenacao?.assessor && (
+                              <div className="p-2.5 bg-white rounded-lg border border-blue-100 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-blue-600 uppercase block">Assessor Operacional</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.coordenacao.assessor}</p>
+                              </div>
+                            )}
+                            {escalaAtual.coordenacao?.apoioCoord && (
+                              <div className="p-2.5 bg-white rounded-lg border border-blue-100 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-blue-600 uppercase block">Apoio à Coordenação</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.coordenacao.apoioCoord}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Seção Apoio Operacional */}
+                      {temApoioPreenchido && (
+                        <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Apoio & Logística</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {escalaAtual.apoioServicos?.auxiliarServico && (
+                              <div className="p-2.5 bg-white rounded-lg border border-gray-200 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-gray-500 uppercase block">Auxiliar de Serviço</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.apoioServicos.auxiliarServico}</p>
+                              </div>
+                            )}
+                            {escalaAtual.apoioServicos?.gestorViaturas && (
+                              <div className="p-2.5 bg-white rounded-lg border border-gray-200 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-gray-500 uppercase block">Gestor de Viaturas</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.apoioServicos.gestorViaturas}</p>
+                              </div>
+                            )}
+                            {escalaAtual.apoioServicos?.logistica && (
+                              <div className="p-2.5 bg-white rounded-lg border border-gray-200 shadow-2xs">
+                                <span className="text-[10px] font-semibold text-gray-500 uppercase block">Logística</span>
+                                <p className="text-sm font-bold text-gray-800">{escalaAtual.apoioServicos.logistica}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* BLOCO 2: Equipes Ativas */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold text-gray-800">
+                      🚒 Equipes Ativas Escaladas ({equipesFiltradasDashboard.length})
+                    </h2>
+                    <span className="text-xs text-gray-500 italic">
+                      * Ocultando campos não preenchidos e equipes sem VTR.
+                    </span>
+                  </div>
+
+                  {equipesFiltradasDashboard.length === 0 ? (
+                    <div className="bg-white p-8 rounded-xl shadow-sm text-center text-gray-500 border border-dashed border-gray-300">
+                      Nenhuma equipe com viatura atribuída para este turno e data.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {equipesFiltradasDashboard.map((eq) => {
+                        const vtr = viaturas.find((v) => Number(v.id) === Number(eq.viaturaId));
+                        return (
+                          <div key={eq.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col justify-between">
+                            <div className="p-5 space-y-3">
+                              <div className="flex justify-between items-start border-b pb-2">
+                                <div>
+                                  <h3 className="font-bold text-blue-900 text-base">{eq.nome}</h3>
+                                  <p className="text-xs text-gray-600 font-medium">
+                                    {vtr ? `${vtr.nome} (${vtr.modelo} - ${vtr.placa})` : 'Sem VTR'}
+                                  </p>
+                                </div>
+                                {vtr && <StatusBadge status={vtr.status} />}
+                              </div>
+
+                              {/* Integrantes da Equipe */}
+                              <div className="space-y-1 text-sm text-gray-700">
+                                {eq.condutor && (
+                                  <p><span className="font-semibold text-gray-900">Condutor:</span> {eq.condutor}</p>
+                                )}
+                                {eq.operador1 && (
+                                  <p><span className="font-semibold text-gray-900">Operador 1:</span> {eq.operador1}</p>
+                                )}
+                                {eq.operador2 && (
+                                  <p><span className="font-semibold text-gray-900">Operador 2:</span> {eq.operador2}</p>
+                                )}
+                              </div>
+
+                              {/* Rádio Comunicador (Se preenchido) */}
+                              {eq.radio && (
+                                <div>
+                                  <span className="text-xs font-semibold text-gray-500 uppercase block">Rádio:</span>
+                                  <p className="text-xs font-semibold text-blue-900">
+                                    📻 {eq.radio}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Local Designado (Apenas se preenchido) */}
+                              {eq.localDesignado && (
+                                <div className="pt-1">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase block">Local Designado / Destino:</span>
+                                  <p className="text-sm font-medium text-gray-800 bg-gray-50 p-2 rounded border border-gray-100">
+                                    📍 {eq.localDesignado}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Observações (Apenas se preenchido) */}
+                              {eq.observacoes && (
+                                <div>
+                                  <span className="text-xs font-semibold text-gray-500 uppercase block">Observações:</span>
+                                  <p className="text-xs text-gray-600 bg-yellow-50 p-2 rounded border border-yellow-100">
+                                    📝 {eq.observacoes}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: MONTAR ESCALA (PROTEGIDA) */}
+            {activeTab === 'editar_escala' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                <div className="flex justify-between items-center border-b pb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">Montagem da Escala de Serviço</h2>
+                    <p className="text-sm text-gray-500">
+                      Escala de: <span className="font-bold text-blue-900">{escalaAtual.data || dataSelecionada} ({turnoSelecionado})</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={saveEscala}
+                    className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold text-sm transition shadow"
+                  >
+                    💾 Salvar Escala
+                  </button>
+                </div>
+
+                {/* Seção Data e Horários do Turno */}
+                <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 space-y-3">
+                  <h3 className="font-bold text-indigo-900 text-sm uppercase tracking-wide">Data e Horário do Turno</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Data da Escala</label>
+                      <input
+                        type="date"
+                        value={escalaAtual.data || dataSelecionada}
+                        onChange={(e) => {
+                          setDataSelecionada(e.target.value);
+                          updateEscalaAtual({ ...escalaAtual, data: e.target.value });
+                        }}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Horário de Início</label>
+                      <input
+                        type="time"
+                        value={escalaAtual.horaInicio || '07:00'}
+                        onChange={(e) => updateEscalaAtual({ ...escalaAtual, horaInicio: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Horário de Término</label>
+                      <input
+                        type="time"
+                        value={escalaAtual.horaTermino || '19:00'}
+                        onChange={(e) => updateEscalaAtual({ ...escalaAtual, horaTermino: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Coordenação */}
+                <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 space-y-3">
+                  <h3 className="font-bold text-blue-900 text-sm uppercase tracking-wide">Coordenação</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Supervisor</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.coordenacao?.supervisor || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          coordenacao: { ...escalaAtual.coordenacao, supervisor: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Supervisor"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Coordenador</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.coordenacao?.coordenador || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          coordenacao: { ...escalaAtual.coordenacao, coordenador: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Coordenador"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Assessor Operacional</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.coordenacao?.assessor || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          coordenacao: { ...escalaAtual.coordenacao, assessor: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Assessor"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Apoio à Coordenação</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.coordenacao?.apoioCoord || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          coordenacao: { ...escalaAtual.coordenacao, apoioCoord: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Apoio"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Apoio & Serviços */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                  <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide">Apoio & Serviços</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Auxiliar de Serviço</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.apoioServicos?.auxiliarServico || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          apoioServicos: { ...escalaAtual.apoioServicos, auxiliarServico: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Auxiliar"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Gestor de Viaturas</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.apoioServicos?.gestorViaturas || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          apoioServicos: { ...escalaAtual.apoioServicos, gestorViaturas: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do Gestor"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Logística</label>
+                      <input
+                        type="text"
+                        value={escalaAtual.apoioServicos?.logistica || ''}
+                        onChange={(e) => updateEscalaAtual({
+                          ...escalaAtual,
+                          apoioServicos: { ...escalaAtual.apoioServicos, logistica: e.target.value }
+                        })}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Responsável Logística"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Equipes */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-gray-700 text-sm uppercase">Composição das Equipes</h3>
+                    <button
+                      onClick={addNovaEquipe}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                    >
+                      + Adicionar Nova Equipe
+                    </button>
+                  </div>
+
+                  {escalaAtual.equipes.map((eq, idx) => (
+                    <div key={eq.id} className="border border-gray-200 p-4 rounded-xl space-y-3 bg-white">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <input
+                          type="text"
+                          value={eq.nome}
+                          onChange={(e) => {
+                            const updated = [...escalaAtual.equipes];
+                            updated[idx].nome = e.target.value;
+                            updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                          }}
+                          className="font-bold text-blue-900 text-base border-b border-dashed border-gray-300 focus:border-blue-500 outline-none"
+                        />
+                        <button
+                          onClick={() => removeEquipe(eq.id)}
+                          className="text-red-500 hover:text-red-700 text-xs font-semibold"
+                        >
+                          ✕ Remover Equipe
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Viatura (VTR)</label>
+                          <select
+                            value={eq.viaturaId || ''}
+                            onChange={(e) => {
+                              const val = e.target.value ? Number(e.target.value) : null;
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].viaturaId = val;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">-- Sem Viatura (Ocultar) --</option>
+                            {viaturas.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.nome} - {v.modelo} ({v.status})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Condutor</label>
+                          <input
+                            type="text"
+                            value={eq.condutor}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].condutor = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nome do Condutor"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Operador 1</label>
+                          <input
+                            type="text"
+                            value={eq.operador1}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].operador1 = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nome do Operador 1"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Operador 2</label>
+                          <input
+                            type="text"
+                            value={eq.operador2}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].operador2 = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nome do Operador 2"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Rádio</label>
+                          <input
+                            type="text"
+                            value={eq.radio || ''}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].radio = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Ex: HT-01 ou N.º do Rádio"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Local Designado / Destino</label>
+                          <input
+                            type="text"
+                            value={eq.localDesignado}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].localDesignado = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Ex: Setor Norte"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Observações</label>
+                          <input
+                            type="text"
+                            value={eq.observacoes}
+                            onChange={(e) => {
+                              const updated = [...escalaAtual.equipes];
+                              updated[idx].observacoes = e.target.value;
+                              updateEscalaAtual({ ...escalaAtual, equipes: updated });
+                            }}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Observações do serviço"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: RELATÓRIO GERAL (HISTÓRICO SIMPLIFICADO) */}
+            {activeTab === 'relatorio' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">📈 Relatório Geral das Escalas</h2>
+                  <p className="text-sm text-gray-500">Histórico detalhado por data, auxiliar de serviço e equipes empregadas.</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                  <h3 className="font-bold text-gray-800 text-lg border-b pb-2">Histórico de Escalas</h3>
+
+                  {Object.keys(escalasGlobal).length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">Nenhuma escala gravada no histórico até o momento.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase">
+                            <th className="p-3">Data / Turno</th>
+                            <th className="p-3">Auxiliar de Serviço</th>
+                            <th className="p-3">Equipes Desempenhadas e Locais</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 text-sm">
+                          {Object.entries(escalasGlobal).map(([key, esc]) => {
+                            const [dataKey, turno] = key.split('_');
+                            const dataExibicao = esc.data || dataKey;
+                            const auxiliar = esc.apoioServicos?.auxiliarServico;
+                            const equipesParaExibir = esc.equipes || [];
+
+                            return (
+                              <tr key={key} className="hover:bg-gray-50">
+                                <td className="p-3 font-semibold text-blue-900 whitespace-nowrap align-top">
+                                  {dataExibicao} <span className="text-xs text-gray-500">({turno})</span>
+                                </td>
+                                <td className="p-3 text-gray-800 align-top">
+                                  {auxiliar && auxiliar.trim() !== '' ? (
+                                    <span className="font-medium text-gray-800">👤 {auxiliar}</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">Não informado</span>
+                                  )}
+                                </td>
+                                <td className="p-3 text-gray-700 align-top">
+                                  {equipesParaExibir.length === 0 ? (
+                                    <span className="text-xs text-gray-400 italic">Nenhuma equipe cadastrada</span>
+                                  ) : (
+                                    <ul className="space-y-1.5">
+                                      {equipesParaExibir.map((eq) => (
+                                        <li key={eq.id} className="flex flex-wrap items-center gap-2">
+                                          <span className="font-semibold text-blue-900 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">
+                                            {eq.nome || 'Equipe'}
+                                          </span>
+                                          {eq.localDesignado && eq.localDesignado.trim() !== '' ? (
+                                            <span className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                                              📍 {eq.localDesignado}
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs text-gray-400 italic">(Sem local)</span>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: GESTÃO DE VIATURAS (PROTEGIDA) */}
+            {activeTab === 'viaturas' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                <div className="flex justify-between items-center border-b pb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">Cadastro e Gestão de Viaturas</h2>
+                    <p className="text-sm text-gray-500">Cadastre, edite ou altere o status da frota.</p>
+                  </div>
+                  <div className="space-x-2">
+                    <button
+                      onClick={addViaturaRow}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    >
+                      + Nova Viatura
+                    </button>
+                    <button
+                      onClick={saveViaturas}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow"
+                    >
+                      💾 Salvar Todos os Dados
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase">
+                        <th className="p-3">Nome / Identificador</th>
+                        <th className="p-3">Placa</th>
+                        <th className="p-3">Modelo</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {viaturas.map((vtr, idx) => (
+                        <tr key={vtr.id} className="hover:bg-gray-50">
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={vtr.nome}
+                              onChange={(e) => handleViaturaChange(idx, 'nome', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                              placeholder="Ex: VTR 01"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={vtr.placa}
+                              onChange={(e) => handleViaturaChange(idx, 'placa', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                              placeholder="ABC-1234"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={vtr.modelo}
+                              onChange={(e) => handleViaturaChange(idx, 'modelo', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                              placeholder="Ex: Duster"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <select
+                              value={vtr.status}
+                              onChange={(e) => handleViaturaChange(idx, 'status', e.target.value)}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                            >
+                              <option value="Ativa">Ativa</option>
+                              <option value="Em Manutenção">Em Manutenção</option>
+                              <option value="Fora de Ação">Fora de Ação</option>
+                            </select>
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() => removeViatura(vtr.id)}
+                              className="text-red-600 hover:text-red-800 font-semibold text-xs px-2 py-1 rounded hover:bg-red-50"
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<GestaoEscalasApp />);
+  </script>
+</body>
+</html>
